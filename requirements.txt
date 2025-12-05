@@ -1,0 +1,18 @@
+Este archivo lista las bibliotecas de Python que Render debe instalar
+
+para que su aplicación de lector de QR funcione.
+
+Framework web ligero (si usa Flask o similar)
+
+flask
+gunicorn # Servidor web de producción que Render necesita para correr Flask
+
+Biblioteca de procesamiento de imágenes y QR
+
+opencv-python-headless # Versión sin GUI de OpenCV, ideal para servidores
+pyzbar # Biblioteca popular para leer códigos QR
+
+Otras bibliotecas comunes que podría necesitar
+
+requests
+numpy

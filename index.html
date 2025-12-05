@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lector QR de Asistencia - Control QR</title>
+    <!-- Tailwind CSS para diseño y estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Usamos Inter como fuente principal */
+        :root {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para asegurar que el video se adapte */
+        #preview {
+            width: 100%;
+            height: auto;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+        }
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 flex flex-col items-center">
+
+    <!-- Contenedor Principal -->
+    <div class="w-full max-w-lg bg-white p-6 md:p-8 rounded-2xl shadow-xl border border-indigo-100">
+        
+        <h1 class="text-3xl font-extrabold text-indigo-700 mb-6 text-center">
+            Sistema de Asistencia Control QR
+        </h1>
+
+        <!-- Contenedor del Video/Cámara -->
+        <div class="mb-6">
+            <video id="preview" class="hidden" playsinline></video>
+            <div id="no-camera-message" class="bg-gray-200 p-8 rounded-lg text-center text-gray-500 font-medium">
+                Cámara no iniciada. Presione el botón de abajo.
+            </div>
+        </div>
+
+        <!-- Botones de Control -->
+        <div class="flex flex-col space-y-3 mb-6">
+            <button id="start-button" onclick="iniciarCamara()"
+                class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-green-700 transition duration-150 shadow-md">
+                Iniciar Cámara (Lector QR)
+            </button>
+            <button id="stop-button" onclick="detenerCamara()"
+                class="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-red-600 transition duration-150 shadow-md hidden">
+                Detener Cámara
+            </button>
+        </div>
+
+        <!-- Resultado de la Lectura -->
+        <div class="bg-indigo-50 p-4 rounded-lg border-l-4 border-indigo-500 shadow-inner">
+            <p class="text-sm font-semibold text-indigo-700">Última Lectura QR:</p>
+            <p id="qr-data-display" class="mt-1 text-gray-800 break-words font-mono text-sm">Esperando escaneo...</p>
+        </div>
+    </div>
+
+    <!-- Contenedor para Mensajes de Éxito/Error (Modal personalizado) -->
+    <div id="message-container" class="message-box p-4 rounded-lg shadow-2xl transition-opacity duration-300 opacity-0 pointer-events-none">
+        <p id="message-text" class="font-semibold"></p>
+    </div>
+
+    <!-- Script de la librería Instascan (CDN) -->
+    <script src="https://schmich.github.io/instascan.min.js"></script>
+
+    <script>
+        // ----------------------------------------------------------------------
+        // 1. CONFIGURACIÓN
+        // ----------------------------------------------------------------------
+        // *** IMPORTANTE: Usa la IP local correcta para la prueba. Reemplaza con el dominio de OVH al migrar. ***
+        const API_URL = 'https://qrsaca.iseplus.com/api/registrar-lectura'; 
+        
+        let scanner = null;
+        let isScanning = false;
+        let scanBlocked = false; // Bandera para evitar múltiples envíos rápidos
+        const scanBlockDuration = 5000; // Bloquear nuevos escaneos por 5 segundos
+
+        // Elementos de la interfaz
+        const videoElement = document.getElementById('preview');
+        const noCameraMessage = document.getElementById('no-camera-message');
+        const startButton = document.getElementById('start-button');
+        const stopButton = document.getElementById('stop-button');
+        const qrDataDisplay = document.getElementById('qr-data-display');
+        const messageContainer = document.getElementById('message-container');
+        const messageText = document.getElementById('message-text');
+
+        // ----------------------------------------------------------------------
+        // 2. FUNCIONES DE INTERFAZ
+        // ----------------------------------------------------------------------
+        function mostrarMensaje(texto, tipo = 'success') {
+            messageText.textContent = texto;
+            messageContainer.classList.remove('opacity-0', 'pointer-events-none', 'bg-red-100', 'bg-green-100');
+            
+            if (tipo === 'success') {
+                messageContainer.classList.add('bg-green-100', 'text-green-800', 'border', 'border-green-400');
+            } else {
+                messageContainer.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-400');
+            }
+            
+            messageContainer.classList.add('opacity-100');
+
+            setTimeout(() => {
+                messageContainer.classList.remove('opacity-100');
+                messageContainer.classList.add('opacity-0', 'pointer-events-none');
+            }, scanBlockDuration - 1000); // Muestra el mensaje por 4 segundos
+        }
+
+        // ----------------------------------------------------------------------
+        // 3. CONTROL DE CÁMARA (INSTASCAN)
+        // ----------------------------------------------------------------------
+
+        async function iniciarCamara() {
+            if (isScanning) return;
+            isScanning = true;
+            
+            startButton.disabled = true;
+            startButton.textContent = 'Iniciando Cámara...';
+            
+            // 1. Obtener cámaras disponibles
+            const cameras = await Instascan.Camera.getCameras();
+            let cameraToUse = null;
+
+            if (cameras.length > 0) {
+                // Mejorar la selección de cámara: busca la cámara trasera ('environment')
+                cameraToUse = cameras.find(camera => camera.name.toLowerCase().includes('back') || camera.name.toLowerCase().includes('environment'));
+                
+                // Si no encuentra la trasera, usa la primera disponible (el comportamiento anterior)
+                if (!cameraToUse) {
+                    cameraToUse = cameras[0]; 
+                }
+
+                scanner = new Instascan.Scanner({ 
+                    video: videoElement,
+                    // Mejorar el escaneo en baja luz (opcional)
+                    mirror: false, 
+                    continuous: false 
+                });
+
+                // 2. Configurar el evento de escaneo
+                scanner.addListener('scan', function (content) {
+                    if (scanBlocked) return; // Ignorar si el bloqueo está activo
+                    
+                    // 3. Procesar el contenido escaneado
+                    scanner.stop(); // Detener el escaneo inmediatamente para evitar reescaneos
+
+                    qrDataDisplay.textContent = content; // Mostrar el dato escaneado
+                    
+                    // 4. Bloquear nuevos escaneos por un tiempo
+                    scanBlocked = true;
+                    
+                    // 5. Llamar a la función de registro
+                    registrarLectura(content)
+                        .then(() => {
+                            // Una vez completado el registro, reiniciar el escaneo después del bloqueo
+                            setTimeout(() => {
+                                scanBlocked = false;
+                                // Asegurarse de que el objeto scanner no sea null antes de reiniciar
+                                if (scanner) scanner.start(cameraToUse).catch(console.error);
+                            }, scanBlockDuration);
+                        })
+                        .catch(() => {
+                             // Si hay un error, el bloqueo de 5 segundos sigue activo
+                             setTimeout(() => {
+                                scanBlocked = false;
+                                if (scanner) scanner.start(cameraToUse).catch(console.error);
+                            }, scanBlockDuration);
+                        });
+                });
+
+                // 6. Iniciar la cámara
+                scanner.start(cameraToUse)
+                    .then(() => {
+                        videoElement.classList.remove('hidden');
+                        noCameraMessage.classList.add('hidden');
+                        startButton.classList.add('hidden');
+                        stopButton.classList.remove('hidden');
+                        startButton.disabled = false;
+                        startButton.textContent = 'Iniciar Cámara (Lector QR)';
+                        mostrarMensaje("Cámara iniciada. Apunte el QR.", 'success');
+                    })
+                    .catch(e => {
+                        console.error("Error al iniciar la cámara:", e);
+                        detenerCamara();
+                        mostrarMensaje("ERROR: No se pudo acceder a la cámara. Asegúrese de usar HTTPS o un dominio válido.", 'error');
+                    });
+            } else {
+                noCameraMessage.textContent = "No se encontraron cámaras. Verifique permisos.";
+                startButton.disabled = false;
+                startButton.textContent = 'Iniciar Cámara (Lector QR)';
+                mostrarMensaje("ERROR: No se detectaron cámaras.", 'error');
+            }
+        }
+
+        function detenerCamara() {
+            if (scanner) {
+                scanner.stop();
+                scanner = null;
+            }
+            videoElement.classList.add('hidden');
+            noCameraMessage.classList.remove('hidden');
+            startButton.classList.remove('hidden');
+            stopButton.classList.add('hidden');
+            isScanning = false;
+            mostrarMensaje("Cámara detenida.", 'error');
+        }
+
+        // ----------------------------------------------------------------------
+        // 4. LÓGICA DE CARGA DE DATOS A TRAVÉS DEL QR
+        // ----------------------------------------------------------------------
+        async function registrarLectura(content) {
+            
+            // El contenido del QR es el valor que se enviará directamente a Flask.
+            const payload = {
+                texto_qr: content 
+            };
+
+            try {
+                mostrarMensaje("Procesando lectura...", 'success');
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                // Verifica la respuesta de la API (Flask)
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Éxito: Registro completado
+                    console.log("Registro exitoso:", result);
+                    mostrarMensaje(`✅ Éxito: ${result.mensaje}. Dato: ${result.qr_leido}`, 'success');
+                } else {
+                    // Error de la API (ej. error de DB, 500)
+                    console.error("Error al registrar:", result);
+                    mostrarMensaje(`❌ Error al registrar: ${result.mensaje || 'Error desconocido'}`, 'error');
+                    // Lanzar error para que el listener pueda manejar el reinicio de la cámara
+                    throw new Error(result.mensaje || 'Error desconocido'); 
+                }
+            } catch (error) {
+                // Error de red (servidor apagado o inaccesible)
+                console.error("Error de conexión con la API:", error);
+                mostrarMensaje("❌ Error de conexión: Servidor Flask inaccesible. Verifique la IP y el puerto.", 'error');
+                // Lanzar error para que el listener pueda manejar el reinicio de la cámara
+                throw error; 
+            }
+        }
+    </script>
+</body>
+</html>

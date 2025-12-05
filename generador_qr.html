@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generar QR</title>
+    <!-- Usamos Tailwind CSS para un diseño limpio y responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo para un mejor contraste en los elementos interactivos */
+        .btn-primary {
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3), 0 4px 6px -4px rgba(37, 99, 235, 0.1);
+        }
+        /* Garantizar que el QR no se desborde y sea visible */
+        #qr-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            display: block; /* Asegura que no haya espacios extra */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white p-6 md:p-8 rounded-xl shadow-2xl">
+        <h1 class="text-3xl font-extrabold text-indigo-700 mb-6 text-center">
+            Generador de Control QR 
+        </h1>
+        <p class="text-sm text-gray-500 mb-6 text-center">
+            Introduce el texto, URL o código que deseas convertir en QR. Este será el valor que se guardará en la base de datos.
+        </p>
+
+        <!-- Formulario de Entrada -->
+        <div class="mb-6">
+            <label for="qrContent" class="block text-sm font-medium text-gray-700 mb-2">Contenido del QR:</label>
+            <textarea id="qrContent" rows="3" 
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
+                placeholder="Ej. 11163539|ROBERTO HERNANDEZ|01"></textarea>
+        </div>
+
+        <!-- Botón de Generación -->
+        <button onclick="generateQRCode()"
+            class="w-full btn-primary bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 tracking-wider mb-8">
+            Generar QR
+        </button>
+
+        <!-- Contenedor del QR y Mensajes -->
+        <div id="qr-result" class="mt-6 text-center">
+            <h2 id="qr-label" class="text-lg font-semibold text-gray-800 mb-4 hidden">Código Generado:</h2>
+            <div id="qr-container" class="bg-gray-200 p-4 rounded-xl inline-block shadow-inner">
+                <!-- La imagen QR se insertará aquí -->
+            </div>
+            <p id="error-message" class="text-red-500 mt-4 text-sm font-medium hidden"></p>
+        </div>
+    </div>
+
+    <script>
+        // La URL de la API debe ser relativa para que funcione tanto en local como en OVH.
+        // En OVH, será https://qr.tudominio.com/api/generar-qr
+        // En local, será https://192.168.1.103:5000/api/generar-qr
+        
+        const API_BASE_URL = 'window.location.origin';
+
+        function generateQRCode() {
+            const content = document.getElementById('qrContent').value.trim();
+            const qrContainer = document.getElementById('qr-container');
+            const qrLabel = document.getElementById('qr-label');
+            const errorMessage = document.getElementById('error-message');
+
+            // Limpiar resultados anteriores
+            qrContainer.innerHTML = '';
+            qrLabel.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            
+            if (content === "") {
+                errorMessage.textContent = "Por favor, introduce contenido para generar el QR.";
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // Codificar el contenido para que sea seguro en la URL
+            const encodedContent = encodeURIComponent(content);
+            
+            // Construir la URL completa para el endpoint de Flask
+            // Usamos /api/generar-qr ya que Flask está configurado para manejar esa ruta
+            const qrApiUrl = `${API_BASE_URL}/api/generar-qr?contenido=${encodedContent}`;
+
+            // Crear el elemento de imagen
+            const imgElement = document.createElement('img');
+            
+            // ----------------------------------------------------
+            // Lógica para manejar la carga de la imagen
+            // ----------------------------------------------------
+            imgElement.onload = () => {
+                // Si la imagen se carga correctamente, la mostramos.
+                qrContainer.appendChild(imgElement);
+                qrLabel.classList.remove('hidden');
+            };
+
+            imgElement.onerror = () => {
+                // Si hay un error (ej. Flask falla, contenido muy largo), mostramos el mensaje.
+                errorMessage.textContent = "Error al generar o cargar el QR. Verifica el contenido o el estado del servidor.";
+                errorMessage.classList.remove('hidden');
+            };
+
+            // Establecer el origen (esto dispara la carga de la imagen desde Flask)
+            imgElement.src = qrApiUrl;
+        }
+    </script>
+</body>
+</html>
