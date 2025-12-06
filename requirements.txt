@@ -4,3 +4,4 @@ gunicorn
 opencv-python-headless
 pyzbar
 requests
+qrcode
