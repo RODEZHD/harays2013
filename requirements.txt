@@ -5,4 +5,5 @@ opencv-python-headless
 pyzbar
 requests
 qrcode
+mysql-connector-python
 mysql
