@@ -153,6 +153,6 @@ def registrar_lectura():
 # 6. Ejecución
 # ----------------------------------------------------------------------
 
-if __name__ == '__main__':
+#   if __name__ == '__main__':
     # Usar host='0.0.0.0' para que el celular en la misma red pueda acceder
     # app.run(host='0.0.0.0', port=5000, debug=True,  ssl_context=('cert.pem', 'key.pem'))
